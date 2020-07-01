@@ -35,7 +35,12 @@ struct HelloWorldKernel {
         // The acc parameter is used to access alpaka abstractions in kernels,
         // in this case thread indexing
         uint32_t threadIdx = idx::getIdx<Grid, Threads>(acc)[0];
-        printf("Hello, World from alpaka thread %u!\n", threadIdx);
+        uint32_t threadBlockIdx = idx::getIdx<alpaka::Block, alpaka::Threads>(acc)[0];
+        uint32_t blockIdx = idx::getIdx<alpaka::Grid, alpaka::Blocks>(acc)[0];
+        uint32_t blockThreadExtent = workdiv::getWorkDiv<alpaka::Block, alpaka::Threads>(acc)[0];
+        printf("Hello, world! from alpaka thread (%u, %u, %u, %u -> %s)\n", threadIdx,
+            threadBlockIdx, blockIdx, blockThreadExtent,
+            blockIdx * blockThreadExtent + threadBlockIdx - threadIdx ? "incorrect" : "correct");
     }
 };
 
@@ -48,19 +53,21 @@ int main() {
     using Idx = uint32_t;
 
     // Define alpaka accelerator type, which corresponds to the underlying programming model
-    using Acc = acc::AccCpuOmp2Blocks<Dim, Idx>;
+    using Acc = acc::AccGpuCudaRt<Dim, Idx>;
     // Other options instead of AccCpuOmp2Blocks are
     // - AccGpuCudaRt
     // - AccCpuThreads
     // - AccCpuFibers
     // - AccCpuOmp2Threads
+    // - AccCpuOmp2Blocks
     // - AccCpuOmp4
     // - AccCpuTbbBlocks
     // - AccCpuSerial
 
     // Select the first device available on a system, for the chosen accelerator
     auto const device = pltf::getDevByIdx<Acc>(0u);
-
+    //std::cout << device.getName() << std::endl;
+  
     // Define type for a queue with requested properties:
     // in this example we require the queue to be blocking the host side
     // while operations on the device (kernels, memory transfers) are running
@@ -71,7 +78,7 @@ int main() {
     // Define kernel execution configuration of blocks,
     // threads per block, and elements per thread
     Idx blocksPerGrid = 8;
-    Idx threadsPerBlock = 1;
+    Idx threadsPerBlock = 4;
     Idx elementsPerThread = 1;
     using WorkDiv = workdiv::WorkDivMembers<Dim, Idx>;
     auto workDiv = WorkDiv{blocksPerGrid, threadsPerBlock, elementsPerThread};
@@ -89,7 +96,6 @@ int main() {
 
     // Wait until all operations in the queue are finished.
     // This call is redundant for a blocking queue
-    // Here use alpaka:: because of an issue on macOS
     alpaka::wait::wait(queue);
 
     return 0;
